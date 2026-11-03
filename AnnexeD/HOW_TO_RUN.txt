@@ -1,0 +1,82 @@
+APPENDIX D EXPERIMENTS: HOW TO RUN
+==================================
+
+Two experiments, two folders of the repository:
+    ev-charging-thesis\
+        AnnexeD\                     EXPERIMENT 1: the exact method (unit-flow formulation, UF) against
+                                     Gurobi on the formulation (P) and on its covering form (C),
+                                     through the computing time, 1800 s per run. The exact method
+                                     itself is problems\appendix_d\unit_flow.py (the folder is
+                                     IDENTICAL in methods_comparison, which uses it in experiment 2).
+        Frameworks\methods_comparison\   EXPERIMENT 2: methods_comparison, the five metaheuristics and the exact
+                                     method on the same 40 instances. Everything specific to
+                                     Appendix D, the exact method included, is in
+                                     problems\problem_appendix_d.py and problems\appendix_d\parameters.py.
+The two experiments are independent: run them in any order, but NOT at the same time on
+the same machine (times are measured).
+
+0. INSTALL (once)
+    python -m pip install -r requirements.txt          (from AnnexeD)
+    Python 3.10 or later. Gurobi with a FULL licence is needed by both experiments:
+    install the gurobipy of the same version as the Gurobi installation
+    (python -m pip install gurobipy==<version>).
+
+1. EXPERIMENT 1: EXACT METHOD AGAINST GUROBI (from AnnexeD)
+    run.bat
+    - What it runs: the 40 instances with (UF), (C) and (P); then one ACN and one simulated
+      instance with 300, 400 and 500 bookings with (UF) only. One run at a time, all the
+      logical cores, 1800 s per run, gap tolerance 1e-6, default Gurobi parameters.
+    - Duration: (UF) takes minutes in all. (P) reaches the limit from about 100 bookings
+      and (C) on a few instances: expect 15 to 25 h, at most 40 h.
+      To get (UF) first:   run.bat --name appendix_d_exact_methods --methods UF --extra 300,400,500
+      then run.bat adds (C) and (P): finished runs are kept.
+    - Interrupted, or a run failed? Run run.bat again: finished runs are cached
+      (results\appendix_d_exact_methods\runs\*.json, one file per formulation and instance).
+    - Tables, tests and figures only, from the cached runs:   run.bat --report
+    - Output: AnnexeD\results\appendix_d_exact_methods
+          Tables\appendix_d_instances.tex       the instances
+          Tables\appendix_d_exact_methods.tex   per instance: time, gap, nodes, speed-ups
+          Tables\appendix_d_exact_summary.tex   per class: solved, mean and largest time, binaries
+          Tables\appendix_d_exact_tests.tex     Wilcoxon (Holm), effect size, speed-ups with
+                                                bootstrap intervals, McNemar, Friedman
+          Tables\appendix_d_exact_large.tex     300 to 500 bookings
+          Figures\PNG, Figures\SVG              solved against time, performance profile, time
+                                                per instance, speed-up, binaries, scaling
+          Statistical Tests\appendix_d_exact_tests.json   every test, also on the solver time alone
+          Data\*.csv, report.txt                report.txt ends with the cross-checks (every
+                                                schedule verified, optimal values equal, bounds
+                                                consistent) and gives the machine and the Gurobi version
+    - Other experiments (results\X):   run.bat --name X --limit 300 --ids 1-10,21-30 --methods UF,C,P
+      Ablation of the stronger rounding constraints:   run.bat --name ablation --methods UF,UF0
+
+2. EXPERIMENT 2: METAHEURISTICS AND EXACT METHOD (from methods_comparison)
+    python -m problems.problem_appendix_d estimate      (optional: expected duration on this machine)
+    run_all.bat --only appendix_d               (run_all.bat alone runs every study)
+    - Methods: GA, ES, PSO, GWO, CS (bundled solvers of methods_comparison on the operators of the
+      appendix) and UF, the exact method, added by the problem file as a sixth method: 30
+      runs per instance like the others, ONE thread per run, 1800 s limit, nothing to tune.
+      Switches in problems\appendix_d\parameters.py, section 4b (EXACT_SOLVER, EXACT_AS_METHOD).
+    - Exact reference: before the tuning, methods_comparison also solves every instance once with the
+      exact method (all cores), so that the gaps of every method are measured against the
+      PROVEN OPTIMUM (Results Analysis\Gap Comparison).
+    - Settings: methods_comparison\comparison_config.py (protocol, methods, grids) and
+      methods_comparison\problems\appendix_d\parameters.py (instances, operators, exact method).
+      Do not change them during the run.
+    - Results: methods_comparison\experiments\appendix_d_metaheuristics_<hash> (the name is
+      printed at start). The name is a hash of the methods_comparison configuration ONLY: it does not
+      change when parameters.py or the instance generator change. After such a change,
+      start from an experiments folder WITHOUT a previous appendix_d_metaheuristics_* study:
+      methods_comparison would otherwise reload its instances and its checkpoints.
+    - Budget: N = 100 schedules, L = 500 generations (comparison_config.py, "solvers").
+    - Duration: 16 000 tuning runs + 7 440 evaluation runs, in parallel on the physical
+      cores. The metaheuristics dominate (the 1 200 runs of the exact method take about
+      3 core-hours in all). Expect about 20 to 22 h on 32 cores: run the estimate first.
+    - Times are measured: disable sleep, use a high-performance power plan, and do not
+      run anything heavy at the same time (in particular not experiment 1).
+    - Interrupted? Run run_all.bat --only appendix_d again: it resumes from its checkpoints.
+
+3. THE COMPLEMENTS OF EXPERIMENT 2
+    Three tables that the report of methods_comparison does not include (excess rejections per class,
+    convergence plateau, tuned values), from AnnexeD:
+          python complements.py ..\Frameworks\methods_comparison\experiments\appendix_d_metaheuristics_<hash>
+       -> AnnexeD\results\appendix_d_complements (needs the Evaluation Results of the study).

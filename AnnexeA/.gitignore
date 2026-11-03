@@ -1,0 +1,24 @@
+# results of a campaign and of the tiny run, at the top of the repository (the paper's results are in
+# paper_results/, which is tracked)
+/results/
+/results_quick/
+/results_*/
+/theory/results/
+/smoke_results/
+/smoke_cache/
+
+# the aggregated pickles of the paper's results are rebuilt from the raw runs by `python -m cri report`
+paper_results/results/02_aggregated_data/*.pkl
+
+# Python and test caches
+__pycache__/
+*.py[cod]
+*.nbi
+*.nbc
+.pytest_cache/
+
+# editors and systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

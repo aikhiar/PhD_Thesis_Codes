@@ -1,0 +1,11 @@
+# Python 3.10+ ; tested with the versions below
+numpy==2.2.6
+scipy==1.15.3
+numba==0.61.2
+pandas==2.3.3
+pyyaml==6.0.2
+matplotlib==3.10.9
+markdown==3.10.2
+psutil>=5.9         # cores and memory (automatic number of workers)
+gurobipy>=12        # Gurobi 13 used; a licence is needed (academic licences are free)
+pulp==3.0.2         # only for faithfulness/check.py (the original code built its LP with PuLP and solved it with Gurobi barrier)

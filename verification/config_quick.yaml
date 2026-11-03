@@ -1,0 +1,58 @@
+# Quick end-to-end check of the whole pipeline (about 20-30 minutes): same blocks, methods and
+# analyses as config.yaml, on tiny instance sets with short budgets. Results in results_quick/.
+base: ../AnnexeA/config.yaml
+
+run:
+  output: results_quick
+  cache: ~/.cri_framework_cache/ppmsp_quick
+  workers: auto
+  min_free_gb: 1.5
+
+context:
+  conf_time_limit: 10
+
+references:
+  time_limit: 30
+
+instance_sets:
+  - {name: tune,            family: omega,     n: 30,       T: 48, count: 2, seed: 9001}
+  - {name: small,           family: omega,     n: [10, 20], T: 24, count: 2, seed: 100}
+  - {name: small,           family: staggered, n: [10, 20], T: 24, count: 2, seed: 200}
+  - {name: omega_published, family: omega,     n: [20, 40], T: 48, count: 1, seed: 2561}
+  - {name: medium,          family: omega,     n: 50,       T: 48, count: 1, seed: 400}
+  - {name: medium,          family: staggered, n: 50,       T: 48, count: 1, seed: 500}
+  - {name: medium,          family: overnight, n: 50,       T: 48, count: 1, seed: 600}
+  - {name: large,           family: staggered, n: 300,      T: 96, count: 1, seed: 800}
+  - {name: xlarge,          family: staggered, n: 1000,     T: 96, count: 1, seed: 1100}
+  - {name: special,         family: pcmax,     n: 20,       T: 8,  count: 1, seed: 1300}
+  - {name: special,         family: single,    n: 50,       T: 48, count: 1, seed: 1400}
+
+experiments:
+  E0_sanity:        {max_instances: 3, budgets: [2]}
+  E8a_tuning_faithful:
+    seeds: [0]
+    grid: {__replace__: true, SA: {alpha_c: [0.90, 0.95], L: [30, 50]}}
+  E8b_tuning_budget:
+    budgets: [2]
+    seeds: [0]
+    grid:
+      __replace__: true
+      SA-b: {alpha_c: [0.95, 0.99]}
+      LLS:  {kick_size: [2, 3]}
+      WLNS: {width: [8, 12]}
+  E2_head_to_head:          {seeds: [0, 1]}
+  E2b_head_to_head_budgets: {budgets: [1], seeds: [0]}
+  E4a_equal_budgets:        {budgets: [1, 3], seeds: [0]}
+  E4b_equal_budgets_60s:    {budgets: [10], seeds: [0]}
+  E3_long_runs:             {budgets: [20]}
+  E3x_long_runs_xlarge:     {budgets: [20]}
+  E5_ablation:              {budgets: [3], seeds: [0]}
+  E5b_ablation_60s:         {budgets: [10]}
+  E6_scalability:           {budgets: [20]}
+  E7_gurobi_threads:        {budgets: [5]}
+  E9_managerial:            {budgets: [3]}
+  E10a_state_of_the_art:    {budgets: [3], seeds: [0]}
+  E10b_state_of_the_art_60s: {budgets: [10]}
+
+report:
+  title: "Certify-Round-Improve for the PPMSP: quick check report"

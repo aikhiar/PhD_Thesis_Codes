@@ -1,0 +1,60 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the paper below."
+type: software
+title: "Preemptive Peak Power Scheduling with A Priori Certificates: code and experiments"
+abstract: >-
+  Certify-Round-Improve (CRI) framework for the preemptive Peak Power Minimization Scheduling
+  Problem (PPMSP): a priori certificates on the optimal peak, certified roundings, local searches,
+  exact models, the baselines of the paper, the numerical verification of the theory, and the
+  complete experimental campaign with its statistical report.
+authors:
+  - family-names: Khiar
+    given-names: Aimen
+    affiliation: "IRIMAS UR 7499, University of Haute Alsace; CESI LINEACT UR 7527"
+  - family-names: Brahmia
+    given-names: Mohamed El Amine
+    affiliation: "CESI LINEACT UR 7527"
+  - family-names: Oulamara
+    given-names: Ammar
+    affiliation: "LORIA UMR 7503, University of Lorraine"
+  - family-names: Golabi
+    given-names: Mahmoud
+    affiliation: "IRIMAS UR 7499, University of Haute Alsace"
+  - family-names: Azerine
+    given-names: Abdennour
+    affiliation: "IRIMAS UR 7499, University of Haute Alsace"
+  - family-names: Idoumghar
+    given-names: Lhassane
+    affiliation: "IRIMAS UR 7499, University of Haute Alsace"
+license: MIT
+repository-code: "https://github.com/aikhiar/ppmsp-certificates"
+url: "https://github.com/aikhiar/ppmsp-certificates"
+version: "1.0.0"
+date-released: "2026-10-25"
+keywords:
+  - scheduling
+  - electric vehicle charging
+  - peak power minimization
+  - probabilistic method
+  - Lovász Local Lemma
+  - column generation
+  - matheuristics
+preferred-citation:
+  type: article
+  title: "Preemptive Peak Power Scheduling with A Priori Certificates: Bounds, Certified Algorithms and Large-Scale Experiments"
+  authors:
+    - family-names: Khiar
+      given-names: Aimen
+    - family-names: Brahmia
+      given-names: Mohamed El Amine
+    - family-names: Oulamara
+      given-names: Ammar
+    - family-names: Golabi
+      given-names: Mahmoud
+    - family-names: Azerine
+      given-names: Abdennour
+    - family-names: Idoumghar
+      given-names: Lhassane
+  journal: "Omega"
+  status: submitted
+  year: 2026

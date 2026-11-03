@@ -1,0 +1,16 @@
+# Appendix D experiments: exact method against Gurobi (AnnexeD) and the metaheuristics study (methods_comparison).
+# Versions on which every test passed (Python 3.10, Windows 11).
+# Install:  python -m pip install -r requirements.txt
+numpy==2.2.6
+scipy==1.15.3
+numba==0.61.2
+matplotlib==3.10.9
+joblib==1.5.1
+psutil==7.0.0          # physical cores for n_jobs "auto" (fallback: logical cores / 2)
+tqdm==4.67.1           # progress bars (optional)
+pulp==3.0.2            # experiment 1: the formulation (P) is written with PuLP, solved by GUROBI
+# gurobipy: needed by both experiments (the exact method, the formulations (C) and (P), and the
+# exact method inside the methods_comparison study), with a full licence. It is NOT pinned here: install
+# the gurobipy of the same version as the Gurobi installation and its licence, e.g.
+#     python -m pip install gurobipy==12.0.3      (for Gurobi 12.0.3)
+# (tested with gurobipy 13.0.2)

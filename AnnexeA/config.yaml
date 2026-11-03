@@ -1,0 +1,429 @@
+# =====================================================================================
+# CRI framework: the full experimental campaign of the paper (PPMSP)
+#
+#   run_all.bat                                     verification, campaign and report (README.md)
+#   python -m cri all config.yaml                   campaign + report
+#   python -m cri plan config.yaml                  task counts, budgets, workers
+#   python -m cri report config.yaml                report only
+#   python -m cri all config.yaml --only E2_head_to_head   one block
+#
+# Every run is stored as soon as it ends (results/01_raw_runs); re-running resumes. Delete the
+# results folder (or one results/01_raw_runs/<block>) to recompute. Times are wall-clock seconds.
+# A method's time includes the Certify artifacts it uses (charged, computed once per instance).
+# =====================================================================================
+
+problem: ppmsp
+
+run:
+  output: results               # relative to this file
+  cache: ~/.cri_framework_cache/ppmsp # per-instance contexts (LP, lower bounds, certificates): kept out of
+                                      # synchronized folders (large, rewritten often); ~ and %VARS% are expanded
+  seed: 2026                    # base seed of every instance set
+  workers: auto                 # auto = from the cores and the free RAM of the machine (see cri/core/resources.py);
+                                # an integer fixes it; a block may override with its own workers / mem_gb_per_worker
+  count_physical_cores: true    # one worker per physical core (hyperthreads would distort wall-clock budgets)
+  reserve_cores: 1              # cores left to the OS and the master process
+  mem_gb_per_worker: 1.0        # memory estimate per worker (blocks with large instances raise it)
+  reserve_mem_gb: 1.0           # RAM left free (Windows grows its page file under memory pressure)
+  max_workers: null             # optional cap
+  split_jobs: true              # load balance: split the jobs of cached instances when a block has
+  split_factor: 3               # ... fewer than split_factor x workers jobs (e.g. E3: 18 instances x 4 long runs)
+  resume: true
+  retry_failed: true
+  flush_seconds: 30
+  gurobi_output: false
+  gurobi_threads: 1             # default threads of every Gurobi model in a worker (methods may set more)
+  keep_awake: true              # no idle sleep while a campaign runs (wall-clock budgets); runs that
+                                # still span a sleep are marked suspect_timing and re-run on resume
+  warmup: true                  # load the Numba kernels in every worker before its first measured run
+  cache_max_n: 3000             # contexts of larger instances (E6 only) are not written to the cache
+  min_free_gb: 3.0              # stop cleanly (resumable) when the results disk has less free space
+  licence_wait_min: 30          # no solver licence (WLS needs the network): wait this long, then stop cleanly
+  licence_poll_s: 60            # ... trying again every licence_poll_s seconds; failed runs are retried
+
+# Certify stage (context of an instance)
+context:
+  cut_kmax: 8                   # largest cover size of the cover-cut bound (Theorem 4.19)
+  use_conf: true                # configuration LP bound (Theorem 4.20)
+  conf_max_n: 500               # configuration LP only up to this n (above: LB_cut)
+  conf_time_limit: 60           # time limit of the configuration-LP bisection (fallback: LB_cut)
+  exact_dp_max_n: 400           # exact forest DP certificates up to this n
+  ir_max_n: 2000                # iterative rounding (repeated LPs) up to this n
+
+# Exact references (aggregated model, Theorem 3.3) for the gap-to-optimum measures
+references:
+  sets: [small, medium, omega_published]
+  time_limit: 300
+  model: aggregated
+  mem_gb_per_worker: 1.5
+  threads: 1
+
+# Default parameters per method class (a spec's own params override them; tuned values of the
+# tuning block E8 override both for the ids it tunes)
+defaults:
+  G:      {mode: single}
+  RR:     {N: 10000, stop: iterations, chunk: 2000}
+  RLP:    {trials: 50, stop: trials}
+  SA:     {T0: 100.0, Tmin: 0.01, alpha_c: 0.95, L: 50, N: 10000, alpha_p: 0.3, eps: 0.0, stop: iterations, chunk: 5000}
+  CE:     {passes: 3}
+  MT:     {max_steps: 1000000, mode: single}
+  LLS:    {kick_size: 3, max_checks: 200000, chunk: 20}
+  WLNS:   {width: 12, min_width: 6, sub_time_limit: 2.0, adaptive: true, threads: 1}
+  CRI:    {improve_slice: 5.0, complete: false, complete_share: 0.25, complete_model: aggregated, threads: 1}
+  GUROBI: {model: standard, threads: 1}
+
+# -------------------------------------------------------------------------------------
+# Method library (ids used by the experiment blocks)
+# -------------------------------------------------------------------------------------
+methods:
+  # earlier methods in their original form (original stopping rules and parameters)
+  - {id: G,   class: G}
+  - {id: RR,  class: RR,  params: {N: 10000, stop: iterations}}
+  - {id: RLP, class: RLP, params: {trials: 50, stop: trials}}
+  - {id: SA,  class: SA,  params: {T0: 100.0, Tmin: 0.01, alpha_c: 0.95, L: 50, N: 10000, alpha_p: 0.3, stop: iterations}}
+  - {id: HSG, class: SA,  tuned_as: SA, params: {init: G, T0: 100.0, Tmin: 0.01, alpha_c: 0.95, L: 50, N: 10000, alpha_p: 0.3, stop: iterations}}
+  - {id: HSR, class: SA,  tuned_as: SA, params: {init: RR, init_spec: {class: RR, params: {N: 1000, stop: iterations}}, T0: 100.0, Tmin: 0.01, alpha_c: 0.95, L: 50, N: 10000, alpha_p: 0.3, stop: iterations}}
+  - {id: HSL, class: SA,  tuned_as: SA, params: {init: RLP, init_spec: {class: RLP, params: {trials: 5, stop: trials}}, T0: 100.0, Tmin: 0.01, alpha_c: 0.95, L: 50, N: 10000, alpha_p: 0.3, stop: iterations}}
+  # earlier methods, anytime versions (use the whole budget)
+  - {id: G-b,   class: G,   params: {mode: budget}}
+  - {id: RR-b,  class: RR,  params: {stop: budget}}
+  - {id: RLP-b, class: RLP, params: {stop: budget}}
+  - {id: SA-b,  class: SA,  params: {stop: budget}}
+  - {id: HSG-b, class: SA,  tuned_as: SA-b, params: {stop: budget, init: G}}
+  - {id: HSR-b, class: SA,  tuned_as: SA-b, params: {stop: budget, init: RR, init_spec: {class: RR, params: {N: 1000, stop: iterations}}}}
+  - {id: HSL-b, class: SA,  tuned_as: SA-b, params: {stop: budget, init: RLP, init_spec: {class: RLP, params: {trials: 5, stop: trials}}}}
+  - {id: HSC-b, class: SA,  tuned_as: SA-b, params: {stop: budget, init: CRI, init_spec: {class: CRI, params: {improve: []}}}}
+  # new certified roundings
+  - {id: CE-lp-excess,   class: CE, params: {matrix: lp,   estimator: excess}}
+  - {id: CE-lp-union,    class: CE, params: {matrix: lp,   estimator: union}}
+  - {id: CE-lp-comp,     class: CE, params: {matrix: lp,   estimator: component}}
+  - {id: CE-cut-excess,  class: CE, params: {matrix: cut,  estimator: excess}}
+  - {id: CE-cut-union,   class: CE, params: {matrix: cut,  estimator: union}}
+  - {id: CE-cut-comp,    class: CE, params: {matrix: cut,  estimator: component}}
+  - {id: CE-conf-excess, class: CE, params: {matrix: conf, estimator: excess}}
+  - {id: CE-conf-union,  class: CE, params: {matrix: conf, estimator: union}}
+  - {id: CE-conf-comp,   class: CE, params: {matrix: conf, estimator: component}}
+  - {id: IR, class: IR}
+  - {id: MT-lp,   class: MT, params: {matrix: lp}}
+  - {id: MT-cut,  class: MT, params: {matrix: cut}}
+  - {id: MT-conf, class: MT, params: {matrix: conf}}
+  - {id: MT-lp-b,  class: MT, params: {matrix: lp,  mode: budget}}
+  - {id: MT-cut-b, class: MT, params: {matrix: cut, mode: budget}}
+  # new improvement methods (start: greedy)
+  - {id: LLS,  class: LLS}
+  - {id: WLNS, class: WLNS}
+  # the CRI pipeline and its ablations
+  - {id: CRI,   class: CRI}
+  - {id: CRI+C, class: CRI, params: {complete: true}}
+  - {id: CRI-R,      class: CRI, params: {improve: []}}
+  - {id: CRI-R+LLS,  class: CRI, params: {improve: [{class: LLS}]}}
+  - {id: CRI-R+WLNS, class: CRI, params: {improve: [{class: WLNS}]}}
+  - {id: CRI-R+SA,   class: CRI, params: {improve: [{class: SA, params: {stop: budget}}]}}
+  - {id: CRI-lp,     class: CRI, params: {round: [{class: CE, params: {matrix: lp, estimator: excess}}, {class: CE, params: {matrix: lp, estimator: union}}, {class: CE, params: {matrix: lp, estimator: component}}, {class: MT, params: {matrix: lp}}, {class: G}]}}
+  - {id: CRI-cut,    class: CRI, params: {round: [{class: CE, params: {matrix: cut, estimator: excess}}, {class: CE, params: {matrix: cut, estimator: union}}, {class: CE, params: {matrix: cut, estimator: component}}, {class: MT, params: {matrix: cut}}, {class: G}]}}
+  - {id: CRI-noconf, class: CRI, params: {certify: {conf: false}, round: [{class: CE, params: {matrix: lp, estimator: excess}}, {class: CE, params: {matrix: cut, estimator: excess}}, {class: CE, params: {matrix: lp, estimator: component}}, {class: CE, params: {matrix: cut, estimator: component}}, {class: MT, params: {matrix: lp}}, {class: IR}, {class: G}]}}
+  - {id: CRI-CE,     class: CRI, params: {round: [{class: CE, params: {matrix: lp, estimator: excess}}, {class: CE, params: {matrix: cut, estimator: excess}}, {class: CE, params: {matrix: conf, estimator: excess}}]}}
+  - {id: CRI-MT,     class: CRI, params: {round: [{class: MT, params: {matrix: lp}}, {class: MT, params: {matrix: cut}}, {class: MT, params: {matrix: conf}}]}}
+  - {id: CRI-IR,     class: CRI, params: {round: [{class: IR}]}}
+  - {id: CRI-G,      class: CRI, params: {round: [{class: G}]}}
+  # exact solver
+  - {id: GUROBI-std,    class: GUROBI, params: {model: standard,   threads: 1}}
+  - {id: GUROBI-agg,    class: GUROBI, params: {model: aggregated, threads: 1}}
+  - {id: GUROBI-std-4t, class: GUROBI, params: {model: standard,   threads: 4}}
+  - {id: GUROBI-agg-4t, class: GUROBI, params: {model: aggregated, threads: 4}}
+  # reference policies and state of the art
+  - {id: ASAP, class: ASAP}
+  - {id: GNP,  class: GNP}
+  - {id: BK,   class: BK}
+  - {id: NFDH,      class: NFDH}
+  - {id: ZAIDI_H,   class: ZAIDI_H}
+  - {id: ZAIDI_ILS, class: ZAIDI_ILS}
+  - {id: ZAIDI_ILS-b, class: ZAIDI_ILS, params: {restart: true}}
+  - {id: HUNSAKER,  class: HUNSAKER}
+  - {id: AFSHAR_BB, class: AFSHAR_BB}
+  - {id: AN_HYBRID, class: AN_HYBRID}                                     # SER with LS2 (their best)
+  - {id: AN-PAR,    class: AN_HYBRID, params: {variant: PAR, ls: LS2}}
+  - {id: AN-dev,    class: AN_HYBRID, params: {variant: SER, ls: LS2, objective: dev}}   # leveling objective, as published
+  # certificates only
+  - {id: CERTIFY, class: CERTIFY}
+
+# -------------------------------------------------------------------------------------
+# Instance sets (n and T may be lists: one sub-set per pair; count instances per pair)
+# -------------------------------------------------------------------------------------
+instance_sets:
+  # tuning instances (never used for evaluation)
+  - {name: tune, family: omega,     n: [50, 100], T: 96, count: 3, seed: 9001}
+  - {name: tune, family: staggered, n: [50, 100], T: 96, count: 3, seed: 9101}
+  - {name: tune, family: overnight, n: [50, 100], T: 96, count: 3, seed: 9201}
+  # small: proven optima
+  - {name: small, family: omega,     n: [10, 20, 30], T: 48, count: 5, seed: 100}
+  - {name: small, family: staggered, n: [10, 20, 30], T: 48, count: 5, seed: 200}
+  - {name: small, family: overnight, n: [10, 20, 30], T: 48, count: 5, seed: 300}
+  # the benchmark of the earlier methods (same generator and sizes, new seeds)
+  - {name: omega_published, family: omega, n: 20,  T: 48,  count: 5, seed: 2561}
+  - {name: omega_published, family: omega, n: 30,  T: 48,  count: 5, seed: 2562}
+  - {name: omega_published, family: omega, n: 40,  T: 72,  count: 5, seed: 2563}
+  - {name: omega_published, family: omega, n: 50,  T: 72,  count: 5, seed: 2564}
+  - {name: omega_published, family: omega, n: 75,  T: 96,  count: 5, seed: 2565}
+  - {name: omega_published, family: omega, n: 100, T: 96,  count: 5, seed: 2566}
+  - {name: omega_published, family: omega, n: 150, T: 120, count: 5, seed: 2567}
+  - {name: omega_published, family: omega, n: 200, T: 120, count: 5, seed: 2568}
+  # medium: hard for the solver
+  - {name: medium, family: omega,     n: [50, 100, 200], T: 96, count: 5, seed: 400}
+  - {name: medium, family: staggered, n: [50, 100, 200], T: 96, count: 5, seed: 500}
+  - {name: medium, family: overnight, n: [50, 100, 200], T: 96, count: 5, seed: 600}
+  # large
+  - {name: large, family: omega,     n: [500, 1000, 2000], T: 96, count: 3, seed: 700}
+  - {name: large, family: staggered, n: [500, 1000, 2000], T: 96, count: 3, seed: 800}
+  - {name: large, family: overnight, n: [500, 1000, 2000], T: 96, count: 3, seed: 900}
+  # very large (5-minute slots for the staggered family: windows scaled by 3)
+  - {name: xlarge, family: omega,     n: [5000, 10000], T: 96,  count: 1, seed: 1000}
+  - {name: xlarge, family: staggered, n: [5000, 10000], T: 288, count: 1, seed: 1100, params: {min_window: 9, max_window: 30}}
+  - {name: xlarge, family: overnight, n: 5000,          T: 96,  count: 1, seed: 1200}
+  # special cases of the theory
+  - {name: special, family: pcmax,  n: [20, 50, 100], T: 8,  count: 3, seed: 1300}
+  - {name: special, family: single, n: [50, 200],     T: 96, count: 3, seed: 1400}
+
+# -------------------------------------------------------------------------------------
+# Experiment blocks, run in this order
+#   kind: runs (default) | tuning;  budgets: list of seconds (null = the method's own rule)
+#   analyses: see cri/analysis/report.py; control: method compared with every other one
+# -------------------------------------------------------------------------------------
+experiments:
+
+  E0_sanity:
+    description: Every method once on a few small instances (feasibility, statuses, timing).
+    addresses: Section 6.1 of the paper (sanity checks of every method)
+    sets: [small]
+    max_instances: 6
+    methods: [G, RR, RLP, SA, HSG, HSR, HSL, CE-lp-excess, CE-cut-union, CE-conf-comp, IR, MT-lp, LLS, WLNS, CRI, CRI+C,
+              GUROBI-std, GUROBI-agg, ASAP, GNP, BK, NFDH, ZAIDI_H, ZAIDI_ILS, HUNSAKER, AFSHAR_BB, AN_HYBRID, CERTIFY]
+    budgets: [5]
+    seeds: [0]
+    analyses: [comparison]
+
+  E1_certificates:
+    description: Every lower and upper certificate (Sections 3-4) against the optimum or the best known value; validity, tightness, cost, instances proved optimal a priori.
+    addresses: Section 6.2 of the paper (quality of the a priori certificates)
+    sets: [small, omega_published, medium, large, special]
+    methods: [CERTIFY]
+    budgets: [null]
+    seeds: [0]
+    mem_gb_per_worker: 2.0       # memory estimate per worker (auto workers)
+    analyses: [certificates]
+
+  E8a_tuning_faithful:
+    description: Faithful tuning of the earlier SA (and, through tuned_as, of its hybrids) with its original grid (243 points, iteration mode), on the separate tuning set (never on evaluation instances).
+    addresses: Section 6.1 of the paper (tuning on the separate tuning set)
+    kind: tuning
+    sets: [tune]
+    methods: [SA]
+    grid:
+      SA: {T0: [50.0, 100.0, 200.0], Tmin: [0.01, 0.1, 1.0], alpha_c: [0.90, 0.95, 0.98], L: [30, 50, 80], alpha_p: [0.1, 0.3, 0.5]}
+    budgets: [null]
+    seeds: [0, 1]
+    apply: true
+    analyses: [tuning]
+
+  E8b_tuning_budget:
+    description: Tuning of the budget-mode methods (SA-b and the SA-b hybrids, LLS, W-LNS) at 10 s on the separate tuning set; the chosen LLS and W-LNS values become the class defaults (used inside CRI).
+    addresses: Section 6.1 of the paper (tuning on the separate tuning set)
+    kind: tuning
+    sets: [tune]
+    methods: [SA-b, LLS, WLNS]
+    grid:
+      SA-b: {T0: [10.0, 100.0], alpha_c: [0.95, 0.99], L: [50, 200], alpha_p: [0.1, 0.3]}
+      LLS:  {kick_size: [2, 3, 5, 8]}
+      WLNS: {width: [8, 12, 16, 24], sub_time_limit: [1.0, 2.0]}
+    budgets: [10]
+    seeds: [0, 1]
+    apply: true
+    apply_to_class: {LLS: LLS, WLNS: WLNS, SA-b: SA}   # SA-b values also become the SA class defaults (CRI-R+SA)
+    analyses: [tuning]
+
+  E2_head_to_head:
+    description: Earlier methods in their original form (each method's own stopping rule) against their certified counterparts, namely RR vs MT, RLP vs CE and IR, G vs CE, and SA vs its hybrids.
+    addresses: Section 6.3 of the paper (certified roundings and their heuristic counterparts)
+    sets: [small, omega_published, medium]
+    methods: [G, RR, RLP, SA, HSG, HSR, HSL, CE-lp-excess, CE-lp-union, CE-lp-comp, CE-cut-excess, CE-cut-union, CE-cut-comp,
+              CE-conf-excess, CE-conf-union, CE-conf-comp, IR, MT-lp, MT-cut, MT-conf]
+    budgets: [null]
+    seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+    pairs: [[RR, MT-lp], [RR, MT-cut], [RR, MT-conf], [RLP, CE-lp-excess], [RLP, CE-cut-excess], [RLP, CE-conf-comp], [RLP, IR],
+            [G, CE-lp-excess], [SA, HSG], [SA, HSR], [SA, HSL]]
+    control: CE-cut-excess
+    analyses: [comparison, head_to_head]
+
+  E2b_head_to_head_budgets:
+    description: The same pairs at equal budgets (1 s and 10 s), where the earlier methods use the whole budget (restarts, more trials, more iterations); MT repeats with new seeds.
+    addresses: Section 6.3 of the paper (the same pairs at equal budgets)
+    sets: [small, medium]
+    methods: [G-b, RR-b, RLP-b, MT-lp-b, MT-cut-b, CE-lp-excess, CE-cut-excess, CE-conf-comp, IR, CRI-R]
+    budgets: [1, 10]
+    seeds: [0, 1, 2]
+    pairs: [[RR-b, MT-lp-b], [RR-b, MT-cut-b], [RLP-b, CE-lp-excess], [RLP-b, CE-cut-excess], [RLP-b, IR], [G-b, CE-cut-excess], [G-b, CRI-R]]
+    control: CRI-R
+    analyses: [comparison, head_to_head]
+
+  E4a_equal_budgets:
+    description: Every method and Gurobi (standard and aggregated models, one thread each) at the same wall-clock budgets of 1 s and 10 s.
+    addresses: Section 6.4 of the paper (equal time budgets; Gurobi's bounds and MIP gaps)
+    sets: [omega_published, medium, large]
+    methods: [G-b, RR-b, RLP-b, SA-b, HSC-b, LLS, WLNS, BK, CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    budgets: [1, 10]
+    seeds: [0, 1, 2]
+    control: CRI
+    figure_methods: [RR-b, SA-b, LLS, WLNS, CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    mem_gb_per_worker: 1.5       # memory estimate per worker (auto workers)
+    analyses: [comparison, anytime, gurobi]
+
+  E4b_equal_budgets_60s:
+    description: The anytime methods and Gurobi at 60 s; anytime curves over the whole run.
+    addresses: Section 6.4 of the paper (equal time budgets, 60 s)
+    sets: [medium, large]
+    methods: [RR-b, SA-b, HSC-b, LLS, WLNS, CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    budgets: [60]
+    seeds: [0, 1]
+    control: CRI
+    figure_methods: [RR-b, SA-b, LLS, WLNS, CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    mem_gb_per_worker: 2.0       # memory estimate per worker (auto workers)
+    analyses: [comparison, anytime, gurobi]
+
+  E3_long_runs:
+    description: Long runs (600 s) of CRI and Gurobi, one instance per family and size of the medium and large sets; anytime curves and dual bounds.
+    addresses: Section 6.5 of the paper (runs of 600 seconds)
+    sets: [medium, large]
+    reps: [0]
+    methods: [CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    budgets: [600]
+    seeds: [0]
+    control: CRI
+    figure_methods: [CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    progress_examples: 6
+    mem_gb_per_worker: 3.0       # memory estimate per worker (auto workers)
+    analyses: [comparison, anytime, gurobi]
+
+  E3x_long_runs_xlarge:
+    description: Long runs (600 s) of CRI and Gurobi on the xlarge instances (n = 5,000-10,000, T up to 288), where Gurobi struggles, with objective-versus-runtime curves and dual bounds at full length (E6 stops at 120 s). Own block so that its memory need does not reduce the workers of E3.
+    addresses: Section 6.5 of the paper (the largest instances; objective-versus-runtime curves)
+    sets: [xlarge]
+    reps: [0]
+    methods: [CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    budgets: [600]
+    seeds: [0]
+    control: CRI
+    figure_methods: [CRI, CRI+C, GUROBI-std, GUROBI-agg]
+    progress_examples: 5
+    mem_gb_per_worker: 8.0       # as E6: the xlarge models need several GB each
+    analyses: [comparison, anytime, gurobi]
+
+  E5_ablation:
+    description: Contribution of each CRI component (Round only, + LLS, + W-LNS, + SA, both); marginal matrix (LP, cover cuts, configuration LP); rounding family (CE, MT, IR, greedy); SA initialisation (the former hybrids are SA started from G, RR, RLP or the CRI Round stage).
+    addresses: Section 6.7 of the paper (contribution of the stages of CRI)
+    sets: [medium]
+    methods: [CRI-R, CRI-R+LLS, CRI-R+WLNS, CRI-R+SA, CRI, CRI-lp, CRI-cut, CRI-noconf, CRI-CE, CRI-MT, CRI-IR, CRI-G,
+              SA-b, HSG-b, HSR-b, HSL-b, HSC-b]
+    budgets: [10]
+    seeds: [0, 1, 2]
+    control: CRI
+    analyses: [comparison]
+
+  E5b_ablation_60s:
+    description: The improvement-stage ablation at 60 s.
+    addresses: Section 6.7 of the paper (the Improve stage at 60 s)
+    sets: [medium]
+    methods: [CRI-R+LLS, CRI-R+WLNS, CRI-R+SA, CRI]
+    budgets: [60]
+    seeds: [0]
+    control: CRI
+    analyses: [comparison]
+
+  E6_scalability:
+    description: Scaling up to n = 10,000 vehicles and T = 288 slots, with the time of the Certify stage and of each method and the gap to the certified lower bound. Workers sized automatically from the free RAM (8 GB per worker for these models).
+    addresses: Section 6.5 of the paper (scalability)
+    sets: [large, xlarge]
+    reps: [0]
+    methods: [G, CE-lp-excess, CE-cut-excess, IR, LLS, CRI, GUROBI-std, GUROBI-agg, ASAP, GNP, BK]
+    budgets: [120]
+    seeds: [0]
+    control: CRI
+    mem_gb_per_worker: 8.0       # memory estimate per worker (auto workers)
+    analyses: [scalability, comparison, gurobi]
+
+  E7_gurobi_threads:
+    description: Gurobi with 4 threads against single-thread CRI at 10 s and 60 s. Workers sized automatically, 4 cores each (physical cores - 1, divided by 4), so that Gurobi has its threads.
+    addresses: Section 6.5 of the paper (Gurobi with four threads)
+    sets: [medium, large]
+    reps: [0]
+    methods: [GUROBI-std-4t, GUROBI-agg-4t, CRI]
+    budgets: [10, 60]
+    seeds: [0]
+    control: CRI
+    mem_gb_per_worker: 3.0       # memory estimate per worker (auto workers)
+    analyses: [comparison, gurobi]
+
+  E9_managerial:
+    description: Peak reduction against uncontrolled charging (ASAP) and non-preemptive charging (GNP); load profiles.
+    addresses: Section 6.8 of the paper (managerial insights)
+    sets: [medium, large]
+    methods: [ASAP, GNP, CRI]
+    budgets: [10]
+    seeds: [0]
+    store_solutions: true
+    control: CRI
+    baselines: [ASAP, GNP]
+    profile_examples: 3
+    mem_gb_per_worker: 1.5       # memory estimate per worker (auto workers)
+    analyses: [managerial]
+
+  E10a_state_of_the_art:
+    description: Baselines from the literature at 10 s, namely NFDH (Ranjan et al. 2014), the heuristic and the ILS of Zaidi et al. (EJOR 2024; as published and restarted until the budget), the online alpha-policy of Hunsaker et al. (2003), the branch and bound of Afshar-Nadjafi et al. (2013), the hybrid metaheuristics of Aristotelous and Nearchou (2024; SER and PAR with LS2, and SER with their leveling objective), the classical Burgess-Killebrew leveling; against CRI and Gurobi (runs reused from E4a).
+    addresses: Section 6.6 of the paper (methods from the literature, 10 s)
+    sets: [omega_published, medium, large]
+    methods: [BK, NFDH, ZAIDI_H, ZAIDI_ILS, ZAIDI_ILS-b, HUNSAKER, AFSHAR_BB, AN_HYBRID, AN-PAR, AN-dev]
+    budgets: [10]
+    seeds: [0, 1, 2]
+    include: [{experiment: E4a_equal_budgets, methods: [CRI, GUROBI-std, GUROBI-agg]}]
+    control: CRI
+    mem_gb_per_worker: 1.5       # memory estimate per worker (auto workers)
+    analyses: [sota]
+
+  E10b_state_of_the_art_60s:
+    description: The anytime state-of-the-art baselines at 60 s, against CRI and Gurobi (runs reused from E4b).
+    addresses: Section 6.6 of the paper (methods from the literature, 60 s)
+    sets: [medium, large]
+    methods: [ZAIDI_ILS-b, AFSHAR_BB, AN_HYBRID, AN-PAR]
+    budgets: [60]
+    seeds: [0]
+    include: [{experiment: E4b_equal_budgets_60s, methods: [CRI, GUROBI-std, GUROBI-agg]}]
+    control: CRI
+    mem_gb_per_worker: 2.0       # memory estimate per worker (auto workers)
+    analyses: [sota]
+
+report:
+  title: "Certify-Round-Improve for the PPMSP: experimental report"
+  metric: gap_lb
+  alpha: 0.05
+  targets: [0.0, 0.005, 0.01, 0.05]
+  highlight: [CRI]
+  figure_formats: [png, pdf]
+  color_order: [CRI, GUROBI-std, GUROBI-agg, LLS, WLNS, SA-b, CRI+C, RR-b]
+  # time-quality ladders across blocks (would longer runs improve the solutions?):
+  # mean gap of every method present in at least two of the blocks, at each budget, on the instances that all
+  # the listed blocks share -> 03_report/30_budget_ladders/<name>/
+  budget_ladders:
+    - {name: equal_budgets_1s_to_600s, blocks: [E4a_equal_budgets, E4b_equal_budgets_60s, E3_long_runs]}
+    - {name: state_of_the_art_10s_to_60s, blocks: [E10a_state_of_the_art, E10b_state_of_the_art_60s]}
+  # budget overruns (> 10% + 0.05 s) that are explained, per method; they are listed with these reasons in
+  # 03_report/00_campaign_overview (budget_overruns table) and accepted by the audit. All are the first, indivisible
+  # step of a baseline at the shortest budgets on the largest instances: the extra time cannot improve the result
+  # beyond what it would be at the budget, so it favours the baseline. Overruns of any other method fail the audit.
+  documented_overruns:
+    GUROBI-std: &grb "model building and the read-out of the schedule are not interruptible: at 1 s (10 s for n >= 1000) the time limit, which includes the building, is reached and the schedule is read afterwards; the incumbent is fixed when the time limit is reached"
+    GUROBI-agg: *grb
+    GUROBI-std-4t: *grb
+    GUROBI-agg-4t: *grb
+    RLP-b: "its LP relaxation is solved once before the first rounding trial; on n >= 500 that LP alone takes 1.5-2.9 s, longer than the 1 s budget"
+    HSC-b: "its start (CRI's Certify and Round stages) and the first annealing chunk are indivisible; at 1 s they slightly exceed the budget"
+    LLS: "the greedy start and the first descent (up to 200000 exchange checks) are indivisible; at 1 s on n = 2000 they slightly exceed the budget"
+    WLNS: "the greedy start and the first window subproblem (a MIP whose building is not interruptible) are indivisible; at 1 s on n >= 1000 they exceed the budget"

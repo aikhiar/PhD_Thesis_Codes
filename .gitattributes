@@ -1,0 +1,12 @@
+# normalize text files in the repository; check them out with the platform's line endings
+* text=auto
+
+# cmd.exe needs Windows line endings to run the launchers reliably (labels, goto)
+*.bat text eol=crlf
+
+# never touch binary files
+*.pkl binary
+*.joblib binary
+*.png binary
+*.pdf binary
+*.zip binary

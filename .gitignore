@@ -1,0 +1,32 @@
+# results of the runs: never part of the code
+Frameworks/methods_comparison/experiments/
+Frameworks/det_vs_stoch/runs/
+Frameworks/surrogate_trainer/runs/
+AnnexeD/results/
+
+# outputs of verify_all.bat
+verification/logs/
+verification/VERIFICATION_REPORT.txt
+verification/chapter5_surrogates_backup/
+verification/chapter6_surrogates_backup/
+
+# deployed surrogates of Chapters 5 and 6: trained by surrogate_trainer on the machine of the
+# study (see README.md); the repository ships code only
+Frameworks/methods_comparison/problems/chapter5/surrogate_models/*.joblib
+Frameworks/methods_comparison/problems/chapter5/surrogate_models/model_card.json
+Frameworks/methods_comparison/problems/chapter6/surrogate_models/*.joblib
+Frameworks/methods_comparison/problems/chapter6/surrogate_models/model_card.json
+
+# Python caches (numba writes its cache next to the sources)
+__pycache__/
+*.py[cod]
+*.nbi
+*.nbc
+.pytest_cache/
+
+# editors and systems
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
